@@ -84,10 +84,7 @@ struct tensor_access {
 	}
 
 	void create_increment(const rhs_terms &rhs, std::vector<index*> reduce_indices, builder::dyn_var<int>& buffer_index) {
-		if (reduce_indices.size())
-			m_tensor.m_buffer[buffer_index] = m_tensor.m_buffer[buffer_index] + create_accum(rhs.m_terms.size() -1 , rhs);
-		else 
-			m_tensor.m_buffer[buffer_index] = create_accum(rhs.m_terms.size() -1 , rhs);
+		m_tensor.m_buffer[buffer_index] = create_accum(rhs.m_terms.size() -1 , rhs);
 	}	
 
 	builder::dyn_var<int> create_index(int idx) {
@@ -98,8 +95,6 @@ struct tensor_access {
 
 	void create_assign(const rhs_terms &rhs, std::vector<index*> reduce_indices) {
 		builder::dyn_var<int> v = create_index(m_tensor.m_dims-1);
-		if (reduce_indices.size())
-			m_tensor.m_buffer[v] = 0;
 		induce_reduce_loop(0, rhs, reduce_indices, v);	
 	}
 
@@ -111,12 +106,10 @@ struct tensor_access {
 			create_increment(rhs, reduce_indices, buffer_index);
 			return;
 		}
-		// Now add a new loop for a reduce index	
-		for (builder::dyn_var<int> iter = 0; iter < reduce_indices[idx]->m_index_bound; iter = iter + 1) {
-			reduce_indices[idx]->m_iterator = iter.addr();
-			induce_reduce_loop(idx + 1, rhs, reduce_indices, buffer_index);
-			reduce_indices[idx]->m_iterator = nullptr;
-		}
+		builder::dyn_var<int> iter = 0;
+		reduce_indices[idx]->m_iterator = iter.addr();
+		induce_reduce_loop(idx + 1, rhs, reduce_indices, buffer_index);
+		reduce_indices[idx]->m_iterator = nullptr;
 	}	
 	
 	// Functions to create loops on the LHS
@@ -125,13 +118,10 @@ struct tensor_access {
 			create_assign(rhs, reduce_indices);
 			return;
 		} 	
-		for (builder::dyn_var<int> iter = 0; iter < m_tensor.m_sizes[idx]; iter = iter + 1) {
-			// Register the loop variable with the index var
-			m_indices[idx]->m_iterator = iter.addr();
-			induce_loops(idx + 1, rhs, reduce_indices);	
-			// While returning unset the iterators
-			m_indices[idx]->m_iterator = nullptr;
-		}
+		builder::dyn_var<int> iter = 0;
+		m_indices[idx]->m_iterator = iter.addr();
+		induce_loops(idx + 1, rhs, reduce_indices);	
+		m_indices[idx]->m_iterator = nullptr;
 	}
 		
 	// Operator over load for = 
