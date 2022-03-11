@@ -31,6 +31,10 @@ struct tensor {
 
 	// Statically known tensor sizes
 	std::vector<int> m_sizes;
+
+	// Static tracking for constant values
+	builder::static_var<int> is_constant = false;
+	builder::static_var<T> constant_val = 0;
 	
 	// Underlying data buffer
 	builder::dyn_var<T*> m_buffer;
@@ -90,24 +94,13 @@ struct tensor_access {
 		return create_accum(idx - 1, rhs) * rhs.m_terms[idx]->get_value();
 	}
 
-	void create_increment(const rhs_terms &rhs, builder::dyn_var<int>& buffer_index) {
-		m_tensor.m_buffer[buffer_index] = m_tensor.m_buffer[buffer_index] + create_accum(rhs.m_terms.size() -1 , rhs);
+	void create_increment(const rhs_terms &rhs, std::vector<index*> reduce_indices, builder::dyn_var<int>& buffer_index) {
+		if (reduce_indices.size())
+			m_tensor.m_buffer[buffer_index] = m_tensor.m_buffer[buffer_index] + create_accum(rhs.m_terms.size() -1 , rhs);
+		else 
+			m_tensor.m_buffer[buffer_index] = create_accum(rhs.m_terms.size() -1 , rhs);
 	}	
 
-	void induce_reduce_loop(int idx, const rhs_terms &rhs, std::vector<index*> reduce_indices, 
-		builder::dyn_var<int>& buffer_index) {
-		if (idx == (int)reduce_indices.size()) {
-			create_increment(rhs, buffer_index);
-			return;
-		}
-		// Now add a new loop for a reduce index	
-		for (builder::dyn_var<int> iter = 0; iter < reduce_indices[idx]->m_index_bound; iter = iter + 1) {
-			reduce_indices[idx]->m_iterator = iter.addr();
-			induce_reduce_loop(idx + 1, rhs, reduce_indices, buffer_index);
-			reduce_indices[idx]->m_iterator = nullptr;
-		}
-	}
-	
 	builder::dyn_var<int> create_index(int idx) {
 		if (idx == 0)
 			return *(m_indices[0]->m_iterator);
@@ -116,10 +109,28 @@ struct tensor_access {
 
 	void create_assign(const rhs_terms &rhs, std::vector<index*> reduce_indices) {
 		builder::dyn_var<int> v = create_index(m_tensor.m_dims-1);
-		m_tensor.m_buffer[v] = 0;
+		if (reduce_indices.size())
+			m_tensor.m_buffer[v] = 0;
 		induce_reduce_loop(0, rhs, reduce_indices, v);	
 	}
 
+	
+	// Functions for create loops on the RHS
+	void induce_reduce_loop(int idx, const rhs_terms &rhs, std::vector<index*> reduce_indices, 
+		builder::dyn_var<int>& buffer_index) {
+		if (idx == (int)reduce_indices.size()) {
+			create_increment(rhs, reduce_indices, buffer_index);
+			return;
+		}
+		// Now add a new loop for a reduce index	
+		for (builder::dyn_var<int> iter = 0; iter < reduce_indices[idx]->m_index_bound; iter = iter + 1) {
+			reduce_indices[idx]->m_iterator = iter.addr();
+			induce_reduce_loop(idx + 1, rhs, reduce_indices, buffer_index);
+			reduce_indices[idx]->m_iterator = nullptr;
+		}
+	}	
+	
+	// Functions to create loops on the LHS
 	void induce_loops(int idx, const rhs_terms& rhs, std::vector<index*> reduce_indices) {
 		if (idx == m_tensor.m_dims) {
 			create_assign(rhs, reduce_indices);
@@ -153,12 +164,14 @@ struct tensor_access {
 		}
 	}
 		
-	// Operator for initializing LHS to a constant
+	// Operator over load for = 
 	void operator= (const rhs_terms &rhs) {
 		// First we will assert that we have all the indices we need 
 		assert(m_indices.size() == (size_t)(m_tensor.m_dims) && "Not enough indices supplied for definition");
 		std::vector<index*> reduce_indices = get_reduce_indices(m_indices, rhs);	
 		induce_loops(0, rhs, reduce_indices);	
+		m_tensor.is_constant = false;
+		m_tensor.constant_val = 0;
 	}
 	template<typename T2>
 	void operator = (const tensor_access<T2> &a) {
@@ -168,7 +181,11 @@ struct tensor_access {
 		*this = std::move((rhs_terms)a);
 	}
 	rhs_terms operator * (rhs_term);
-	
+	void operator = (const T& x) {
+		*this = std::move((rhs_terms)(builder::dyn_var<T>)x);
+		m_tensor.is_constant = true;
+		m_tensor.constant_val = x;
+	}	
 };
 
 
@@ -183,7 +200,6 @@ tensor_access<T> tensor<T>::operator [] (index &i) {
 template <typename T>
 tensor_access<T> tensor_access<T>::operator [] (index &i) {
 	tensor_access<T> t(m_tensor);
-
 	// We can't use this tensor access anymore after this
 	t.m_indices = std::move(m_indices);
 	t.m_indices.push_back(&i);

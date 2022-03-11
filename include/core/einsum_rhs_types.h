@@ -9,7 +9,9 @@ struct rhs_val_const: public rhs_val {
 	const builder::dyn_var<T>* m_const;
 	rhs_val_const(const builder::dyn_var<T> &val) {
 		// retain a reference to the constant dyn_var
-		m_const = val.addr();
+		// Pardon this const cast here, merely for the purpose 
+		// of calling addr
+		m_const = const_cast<builder::dyn_var<T>&>(val).addr();
 	}
 	std::vector<index*> get_indices() const {
 		return std::vector<index*>();
@@ -41,6 +43,8 @@ struct rhs_val_tensor: public rhs_val {
 		return create_index(idx - 1) * (int) (m_tensor_access->m_tensor.m_sizes[idx]) + *(m_tensor_access->m_indices[idx]->m_iterator);
 	}
 	builder::builder get_value() const {	
+		if (m_tensor_access->m_tensor.is_constant) 
+			return m_tensor_access->m_tensor.constant_val;
 		builder::dyn_var<int> v = create_index(m_tensor_access->m_tensor.m_dims - 1);	
 		return m_tensor_access->m_tensor.m_buffer[v];
 	}
