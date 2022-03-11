@@ -13,12 +13,8 @@ static void matrix_vector_multiplication(builder::dyn_var<int*> C, builder::dyn_
 	el::tensor<int> b({N}, B);
 	
 
-	b[j] = 1;
-	
-	for (builder::dyn_var<int> x = 0; x < 5; x = x + 1) {
-		c[i] = a[i][j] * b[j];
-		b[i] = c[i];
-	}
+	b[j] = 1;	
+	c[i] = a[i][j] * b[j];
 }
 
 int main(int argc, char* argv[]) {	
