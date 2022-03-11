@@ -14,11 +14,8 @@ namespace el {
 struct rhs_terms;
 struct rhs_term;
 struct index {
-	// index doesn't have any members	
-	// All we need from this is address comparison
-
-	// While in use, they will hold a reference to an index	
-	builder::dyn_var<int> * m_iterator = nullptr;
+	// While in use, the iterator to use
+	builder::dyn_var<int> m_iterator = 0;
 	int m_index_bound = 0;	
 };
 
@@ -89,8 +86,8 @@ struct tensor_access {
 
 	builder::dyn_var<int> create_index(int idx) {
 		if (idx == 0)
-			return *(m_indices[0]->m_iterator);
-		return create_index(idx - 1) * (int) (m_tensor.m_sizes[idx]) + *(m_indices[idx]->m_iterator);
+			return (m_indices[0]->m_iterator);
+		return create_index(idx - 1) * (int) (m_tensor.m_sizes[idx]) + (m_indices[idx]->m_iterator);
 	}
 
 	void create_assign(const rhs_terms &rhs, std::vector<index*> reduce_indices) {
@@ -106,10 +103,7 @@ struct tensor_access {
 			create_increment(rhs, reduce_indices, buffer_index);
 			return;
 		}
-		builder::dyn_var<int> iter = 0;
-		reduce_indices[idx]->m_iterator = iter.addr();
 		induce_reduce_loop(idx + 1, rhs, reduce_indices, buffer_index);
-		reduce_indices[idx]->m_iterator = nullptr;
 	}	
 	
 	// Functions to create loops on the LHS
@@ -118,10 +112,7 @@ struct tensor_access {
 			create_assign(rhs, reduce_indices);
 			return;
 		} 	
-		builder::dyn_var<int> iter = 0;
-		m_indices[idx]->m_iterator = iter.addr();
 		induce_loops(idx + 1, rhs, reduce_indices);	
-		m_indices[idx]->m_iterator = nullptr;
 	}
 		
 	// Operator over load for = 
