@@ -32,10 +32,6 @@ struct tensor {
 	// Statically known tensor sizes
 	std::vector<int> m_sizes;
 
-	// Static tracking for constant values
-	builder::static_var<int> is_constant = false;
-	builder::static_var<T> constant_val = 0;
-	
 	// Underlying data buffer
 	builder::dyn_var<T*> m_buffer;
 
@@ -170,8 +166,6 @@ struct tensor_access {
 		assert(m_indices.size() == (size_t)(m_tensor.m_dims) && "Not enough indices supplied for definition");
 		std::vector<index*> reduce_indices = get_reduce_indices(m_indices, rhs);	
 		induce_loops(0, rhs, reduce_indices);	
-		m_tensor.is_constant = false;
-		m_tensor.constant_val = 0;
 	}
 	template<typename T2>
 	void operator = (const tensor_access<T2> &a) {
@@ -183,8 +177,6 @@ struct tensor_access {
 	rhs_terms operator * (rhs_term);
 	void operator = (const T& x) {
 		*this = std::move((rhs_terms)(builder::dyn_var<T>)x);
-		m_tensor.is_constant = true;
-		m_tensor.constant_val = x;
 	}	
 };
 
