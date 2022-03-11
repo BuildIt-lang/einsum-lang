@@ -39,8 +39,8 @@ struct rhs_val_tensor: public rhs_val {
 	}
 	builder::dyn_var<int> create_index(int idx) const {
 		if (idx == 0)
-			return *(m_tensor_access->m_indices[0]->m_iterator);
-		return create_index(idx - 1) * (int) (m_tensor_access->m_tensor.m_sizes[idx]) + *(m_tensor_access->m_indices[idx]->m_iterator);
+			return (m_tensor_access->m_indices[0]->m_iterator);
+		return create_index(idx - 1) * (int) (m_tensor_access->m_tensor.m_sizes[idx]) + (m_tensor_access->m_indices[idx]->m_iterator);
 	}
 	builder::builder get_value() const {	
 		if (m_tensor_access->m_tensor.is_constant) 
@@ -59,7 +59,7 @@ struct rhs_val_index: public rhs_val {
 		return std::vector<index*>();
 	}	
 	builder::builder get_value() const {
-		return *(m_index->m_iterator);
+		return (m_index->m_iterator);
 	}
 };
 
