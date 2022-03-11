@@ -35,11 +35,13 @@ struct rhs_val_tensor: public rhs_val {
 		}
 		return m_tensor_access->m_indices;
 	}
+	builder::dyn_var<int> create_index(int idx) const {
+		if (idx == 0)
+			return *(m_tensor_access->m_indices[0]->m_iterator);
+		return create_index(idx - 1) * (int) (m_tensor_access->m_tensor.m_sizes[idx]) + *(m_tensor_access->m_indices[idx]->m_iterator);
+	}
 	builder::builder get_value() const {	
-		builder::dyn_var<int> v = 0;
-		for (builder::static_var<int> i = 0; i < m_tensor_access->m_tensor.m_dims; i++) {
-			v = v * (int)(m_tensor_access->m_tensor.m_sizes[i]) + *(m_tensor_access->m_indices[i]->m_iterator);
-		}
+		builder::dyn_var<int> v = create_index(m_tensor_access->m_tensor.m_dims - 1);	
 		return m_tensor_access->m_tensor.m_buffer[v];
 	}
 };

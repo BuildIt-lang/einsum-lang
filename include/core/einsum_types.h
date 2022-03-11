@@ -3,9 +3,13 @@
 
 #include "builder/dyn_var.h"
 #include "builder/static_var.h"
+#include "pipeline/extract_cuda.h"
 #include <vector>
 
+#define CTA_SIZE (512)
+
 namespace el {
+
 
 struct rhs_terms;
 struct rhs_term;
@@ -63,6 +67,13 @@ struct rhs_terms {
 	~rhs_terms();
 };
 
+enum device_type {
+	SERIAL = 0,
+	CPU_PARALLEL = 1,
+	GPU_PARALLEL = 2
+};
+extern enum device_type current_device;
+
 template <typename T>
 struct tensor_access {
 	tensor<T>& m_tensor;
@@ -73,13 +84,14 @@ struct tensor_access {
 	// Operator for multiple indices chaining
 	tensor_access<T> operator [] (index &i);	
 
+	builder::dyn_var<T> create_accum(int idx, const rhs_terms &rhs) {
+		if (idx == 0)
+			return rhs.m_terms[0]->get_value();
+		return create_accum(idx - 1, rhs) * rhs.m_terms[idx]->get_value();
+	}
 
 	void create_increment(const rhs_terms &rhs, builder::dyn_var<int>& buffer_index) {
-		builder::dyn_var<T> accum = 1;	
-		for (builder::static_var<size_t> i = 0; i < rhs.m_terms.size(); i++) {
-			accum = accum * rhs.m_terms[i]->get_value();
-		}
-		m_tensor.m_buffer[buffer_index] = m_tensor.m_buffer[buffer_index] + accum;
+		m_tensor.m_buffer[buffer_index] = m_tensor.m_buffer[buffer_index] + create_accum(rhs.m_terms.size() -1 , rhs);
 	}	
 
 	void induce_reduce_loop(int idx, const rhs_terms &rhs, std::vector<index*> reduce_indices, 
@@ -88,7 +100,6 @@ struct tensor_access {
 			create_increment(rhs, buffer_index);
 			return;
 		}
-
 		// Now add a new loop for a reduce index	
 		for (builder::dyn_var<int> iter = 0; iter < reduce_indices[idx]->m_index_bound; iter = iter + 1) {
 			reduce_indices[idx]->m_iterator = iter.addr();
@@ -96,32 +107,49 @@ struct tensor_access {
 			reduce_indices[idx]->m_iterator = nullptr;
 		}
 	}
-
+	
+	builder::dyn_var<int> create_index(int idx) {
+		if (idx == 0)
+			return *(m_indices[0]->m_iterator);
+		return create_index(idx - 1) * (int) (m_tensor.m_sizes[idx]) + *(m_indices[idx]->m_iterator);
+	}
 
 	void create_assign(const rhs_terms &rhs, std::vector<index*> reduce_indices) {
-		builder::dyn_var<int> v = 0;
-		for (builder::static_var<int> i = 0; i < m_tensor.m_dims; i++) {
-			v = v * (int)(m_tensor.m_sizes[i]) + *(m_indices[i]->m_iterator);
-		}
+		builder::dyn_var<int> v = create_index(m_tensor.m_dims-1);
 		m_tensor.m_buffer[v] = 0;
 		induce_reduce_loop(0, rhs, reduce_indices, v);	
 	}
 
 	void induce_loops(int idx, const rhs_terms& rhs, std::vector<index*> reduce_indices) {
-		// Implement a level of loop and recurse	
-		for (builder::dyn_var<int> iter = 0; iter < m_tensor.m_sizes[idx]; iter = iter + 1) {
-			// Register the loop variable with the index var
-			m_indices[idx]->m_iterator = iter.addr();
-			if ((idx + 1) < (m_tensor.m_dims)) {
-				// Recurse
-				induce_loops(idx + 1, rhs, reduce_indices);	
-			} else {
-				// We have covered all the indices
-				// Now we compute the offset and assign
-				create_assign(rhs, reduce_indices);
+		if (idx == m_tensor.m_dims) {
+			create_assign(rhs, reduce_indices);
+			return;
+		} 	
+		if (idx == 0 && current_device == GPU_PARALLEL) {
+			int num_cta = (m_tensor.m_sizes[idx] + CTA_SIZE - 1) / CTA_SIZE;
+			builder::annotate(CUDA_ANNOTATION_STRING);
+			for (builder::dyn_var<int> cta = 0; cta < num_cta; cta = cta + 1) {
+				for (builder::dyn_var<int> tid = 0; tid < CTA_SIZE; tid = tid + 1) {
+					builder::dyn_var<int> thread = cta * CTA_SIZE + tid;
+					if ((m_tensor.m_sizes[idx] % CTA_SIZE == 0) || (bool)(thread < m_tensor.m_sizes[idx])) {
+						m_indices[idx]->m_iterator = thread.addr();
+						induce_loops(idx + 1, rhs, reduce_indices);	
+						m_indices[idx]->m_iterator = nullptr;	
+					}
+				}
 			}
-			// While returning unset the iterators
-			m_indices[idx]->m_iterator = nullptr;
+		} else {
+			// Implement a level of loop and recurse	
+			if (idx == 0 && current_device == CPU_PARALLEL) {
+				builder::annotate("pragma: omp parallel for");
+			}
+			for (builder::dyn_var<int> iter = 0; iter < m_tensor.m_sizes[idx]; iter = iter + 1) {
+				// Register the loop variable with the index var
+				m_indices[idx]->m_iterator = iter.addr();
+				induce_loops(idx + 1, rhs, reduce_indices);	
+				// While returning unset the iterators
+				m_indices[idx]->m_iterator = nullptr;
+			}
 		}
 	}
 		

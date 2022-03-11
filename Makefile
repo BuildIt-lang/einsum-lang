@@ -19,6 +19,7 @@ SAMPLES=$(subst $(SAMPLES_DIR),$(BUILD_DIR),$(SAMPLES_SRCS:.cpp=))
 
 $(shell mkdir -p $(BUILD_DIR))
 $(shell mkdir -p $(BUILD_DIR)/core)
+$(shell mkdir -p $(BUILD_DIR)/pipeline)
 $(shell mkdir -p $(BUILD_DIR)/samples)
 
 BUILDIT_LIBRARY_NAME=buildit
@@ -47,6 +48,7 @@ dep:
 	make -C $(BUILDIT_DIR)
 
 .PRECIOUS: $(BUILD_DIR)/core/%.o
+.PRECIOUS: $(BUILD_DIR)/pipeline/%.o
 .PRECIOUS: $(BUILD_DIR)/samples/%.o
 
 .PHONY: executables
@@ -59,6 +61,10 @@ $(LIBRARY): $(OBJS)
 
 #Rules for core object files	
 $(BUILD_DIR)/core/%.o: $(SRC_DIR)/core/%.cpp $(INCLUDES)
+	$(CXX) $(CFLAGS) $< -o $@ $(INCLUDE_FLAG) -c
+
+#Rules for pipeline object files	
+$(BUILD_DIR)/pipeline/%.o: $(SRC_DIR)/pipeline/%.cpp $(INCLUDES)
 	$(CXX) $(CFLAGS) $< -o $@ $(INCLUDE_FLAG) -c
 
 #Rules for sample object files and executables
