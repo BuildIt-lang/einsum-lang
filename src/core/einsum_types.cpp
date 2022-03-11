@@ -40,5 +40,4 @@ rhs_terms::~rhs_terms() {
 		delete m_terms[i];
 }
 
-enum device_type current_device = SERIAL;
 }

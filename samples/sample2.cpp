@@ -5,7 +5,6 @@
 
 // test case for the expression C[i] = A[i][j] * B[j]
 static void matrix_vector_multiplication(builder::dyn_var<int*> C, builder::dyn_var<int*> A, builder::dyn_var<int*> B, int M, int N) {	
-	el::current_device = el::SERIAL;
 
 	el::index i, j;
 	el::tensor<int> c({M}, C);

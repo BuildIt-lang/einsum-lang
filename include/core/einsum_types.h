@@ -67,13 +67,6 @@ struct rhs_terms {
 	~rhs_terms();
 };
 
-enum device_type {
-	SERIAL = 0,
-	CPU_PARALLEL = 1,
-	GPU_PARALLEL = 2
-};
-extern enum device_type current_device;
-
 template <typename T>
 struct tensor_access {
 	tensor<T>& m_tensor;
@@ -132,31 +125,12 @@ struct tensor_access {
 			create_assign(rhs, reduce_indices);
 			return;
 		} 	
-		if (idx == 0 && current_device == GPU_PARALLEL) {
-			int num_cta = (m_tensor.m_sizes[idx] + CTA_SIZE - 1) / CTA_SIZE;
-			builder::annotate(CUDA_ANNOTATION_STRING);
-			for (builder::dyn_var<int> cta = 0; cta < num_cta; cta = cta + 1) {
-				for (builder::dyn_var<int> tid = 0; tid < CTA_SIZE; tid = tid + 1) {
-					builder::dyn_var<int> thread = cta * CTA_SIZE + tid;
-					if ((m_tensor.m_sizes[idx] % CTA_SIZE == 0) || (bool)(thread < m_tensor.m_sizes[idx])) {
-						m_indices[idx]->m_iterator = thread.addr();
-						induce_loops(idx + 1, rhs, reduce_indices);	
-						m_indices[idx]->m_iterator = nullptr;	
-					}
-				}
-			}
-		} else {
-			// Implement a level of loop and recurse	
-			if (idx == 0 && current_device == CPU_PARALLEL) {
-				builder::annotate("pragma: omp parallel for");
-			}
-			for (builder::dyn_var<int> iter = 0; iter < m_tensor.m_sizes[idx]; iter = iter + 1) {
-				// Register the loop variable with the index var
-				m_indices[idx]->m_iterator = iter.addr();
-				induce_loops(idx + 1, rhs, reduce_indices);	
-				// While returning unset the iterators
-				m_indices[idx]->m_iterator = nullptr;
-			}
+		for (builder::dyn_var<int> iter = 0; iter < m_tensor.m_sizes[idx]; iter = iter + 1) {
+			// Register the loop variable with the index var
+			m_indices[idx]->m_iterator = iter.addr();
+			induce_loops(idx + 1, rhs, reduce_indices);	
+			// While returning unset the iterators
+			m_indices[idx]->m_iterator = nullptr;
 		}
 	}
 		
