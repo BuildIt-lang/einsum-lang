@@ -14,11 +14,8 @@ namespace el {
 struct rhs_terms;
 struct rhs_term;
 struct index {
-	// index doesn't have any members	
-	// All we need from this is address comparison
-
-	// While in use, they will hold a reference to an index	
-	builder::dyn_var<int> * m_iterator = nullptr;
+	// While in use, the iterator to use
+	builder::dyn_var<int> m_iterator = 0;
 	int m_index_bound = 0;	
 };
 
@@ -99,8 +96,8 @@ struct tensor_access {
 
 	builder::dyn_var<int> create_index(int idx) {
 		if (idx == 0)
-			return *(m_indices[0]->m_iterator);
-		return create_index(idx - 1) * (int) (m_tensor.m_sizes[idx]) + *(m_indices[idx]->m_iterator);
+			return (m_indices[0]->m_iterator);
+		return create_index(idx - 1) * (int) (m_tensor.m_sizes[idx]) + (m_indices[idx]->m_iterator);
 	}
 
 	void create_assign(const rhs_terms &rhs, std::vector<index*> reduce_indices) {
@@ -119,10 +116,9 @@ struct tensor_access {
 			return;
 		}
 		// Now add a new loop for a reduce index	
-		for (builder::dyn_var<int> iter = 0; iter < reduce_indices[idx]->m_index_bound; iter = iter + 1) {
-			reduce_indices[idx]->m_iterator = iter.addr();
+		builder::dyn_var<int> &iter = reduce_indices[idx]->m_iterator;
+		for (iter = 0; iter < reduce_indices[idx]->m_index_bound; iter = iter + 1) {
 			induce_reduce_loop(idx + 1, rhs, reduce_indices, buffer_index);
-			reduce_indices[idx]->m_iterator = nullptr;
 		}
 	}	
 	
@@ -139,9 +135,8 @@ struct tensor_access {
 				for (builder::dyn_var<int> tid = 0; tid < CTA_SIZE; tid = tid + 1) {
 					builder::dyn_var<int> thread = cta * CTA_SIZE + tid;
 					if ((m_tensor.m_sizes[idx] % CTA_SIZE == 0) || (bool)(thread < m_tensor.m_sizes[idx])) {
-						m_indices[idx]->m_iterator = thread.addr();
+						m_indices[idx]->m_iterator = thread;
 						induce_loops(idx + 1, rhs, reduce_indices);	
-						m_indices[idx]->m_iterator = nullptr;	
 					}
 				}
 			}
@@ -150,12 +145,9 @@ struct tensor_access {
 			if (idx == 0 && current_device == CPU_PARALLEL) {
 				builder::annotate("pragma: omp parallel for");
 			}
-			for (builder::dyn_var<int> iter = 0; iter < m_tensor.m_sizes[idx]; iter = iter + 1) {
-				// Register the loop variable with the index var
-				m_indices[idx]->m_iterator = iter.addr();
+			builder::dyn_var<int> &iter = m_indices[idx]->m_iterator;
+			for (iter = 0; iter < m_tensor.m_sizes[idx]; iter = iter + 1) {
 				induce_loops(idx + 1, rhs, reduce_indices);	
-				// While returning unset the iterators
-				m_indices[idx]->m_iterator = nullptr;
 			}
 		}
 	}
