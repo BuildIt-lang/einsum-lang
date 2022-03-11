@@ -12,9 +12,7 @@ static void matrix_vector_multiplication(builder::dyn_var<int*> C, builder::dyn_
 	el::tensor<int> a({M, N}, A);
 	el::tensor<int> b({N}, B);
 	
-	el::current_device = el::CPU_PARALLEL;
 	c[i] = a[i][j] * b[j];
-	el::current_device = el::SERIAL;
 }
 // test case for the expression C[i][j] = A[i][k] * B[k][j]
 static void matrix_matrix_multiplication(builder::dyn_var<float*> C, builder::dyn_var<float*> A, builder::dyn_var<float*> B, int M, int N, int L) {
@@ -25,9 +23,7 @@ static void matrix_matrix_multiplication(builder::dyn_var<float*> C, builder::dy
 	el::tensor<float> a({M, L}, A);
 	el::tensor<float> b({L, N}, B);
 	
-	el::current_device = el::GPU_PARALLEL;
 	c[i][j] = a[i][k] * b[k][j];
-	el::current_device = el::SERIAL;
 }
 
 int main(int argc, char* argv[]) {	
