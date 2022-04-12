@@ -5,6 +5,7 @@
 #include "builder/static_var.h"
 #include "pipeline/extract_cuda.h"
 #include <vector>
+#include "core/tensor.h"
 
 #define CTA_SIZE (512)
 
@@ -19,26 +20,6 @@ struct index {
 	int m_index_bound = 0;	
 };
 
-template<typename T>
-struct tensor_access;
-
-template <typename T>
-struct tensor {
-	int m_dims;
-
-	// Statically known tensor sizes
-	std::vector<int> m_sizes;
-
-	// Underlying data buffer
-	builder::dyn_var<T*> m_buffer;
-
-	tensor(const std::vector<int>& sizes, const builder::dyn_var<T*>& buffer):
-		m_dims(sizes.size()), m_sizes(std::move(sizes)), m_buffer(buffer) {
-	}
-
-	tensor_access<T> operator [] (index &i);
-	
-};
 
 std::vector<index*> get_reduce_indices(std::vector<index*> lhs_set, const rhs_terms& rhs);
 
@@ -92,36 +73,20 @@ struct tensor_access {
 
 	void create_assign(const rhs_terms &rhs, std::vector<index*> reduce_indices) {
 		builder::dyn_var<int> v = create_index(m_tensor.m_dims-1);
+		if (reduce_indices.size())
+			m_tensor.m_buffer[v] = 0;
 		induce_reduce_loop(0, rhs, reduce_indices, v);	
 	}
 
 	
-	// Functions for create loops on the RHS
 	void induce_reduce_loop(int idx, const rhs_terms &rhs, std::vector<index*> reduce_indices, 
-		builder::dyn_var<int>& buffer_index) {
-		if (idx == (int)reduce_indices.size()) {
-			create_increment(rhs, reduce_indices, buffer_index);
-			return;
-		}
-		induce_reduce_loop(idx + 1, rhs, reduce_indices, buffer_index);
-	}	
+		builder::dyn_var<int>& buffer_index);
+
+	void induce_loops(int idx, const rhs_terms& rhs, std::vector<index*> reduce_indices);
 	
-	// Functions to create loops on the LHS
-	void induce_loops(int idx, const rhs_terms& rhs, std::vector<index*> reduce_indices) {
-		if (idx == m_tensor.m_dims) {
-			create_assign(rhs, reduce_indices);
-			return;
-		} 	
-		induce_loops(idx + 1, rhs, reduce_indices);	
-	}
 		
-	// Operator over load for = 
-	void operator= (const rhs_terms &rhs) {
-		// First we will assert that we have all the indices we need 
-		assert(m_indices.size() == (size_t)(m_tensor.m_dims) && "Not enough indices supplied for definition");
-		std::vector<index*> reduce_indices = get_reduce_indices(m_indices, rhs);	
-		induce_loops(0, rhs, reduce_indices);	
-	}
+	void operator= (const rhs_terms &rhs);
+
 	template<typename T2>
 	void operator = (const tensor_access<T2> &a) {
 		*this = std::move((rhs_terms)a);
@@ -130,9 +95,7 @@ struct tensor_access {
 		*this = std::move((rhs_terms)a);
 	}
 	rhs_terms operator * (rhs_term);
-	void operator = (const T& x) {
-		*this = std::move((rhs_terms)(builder::dyn_var<T>)x);
-	}	
+	void operator = (const T& x);
 };
 
 
